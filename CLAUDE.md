@@ -19,8 +19,12 @@ more chunks and an LLM call per chunk is too slow.
 
 ## Where things stand (2026-10-09)
 
-- **Scaffold only.** Docs written, directories created, nothing trained, no data built.
-- **Next action:** Phase 1. Verify the candidate data sources in `docs/PLAN.md` §2.2 on Hugging Face, record the results in that table, then write `notebooks/datagen/prompt_injection_datagen.ipynb` following the email repo's v2 datagen notebook.
+- Two data builds, v1 (`febe6837be209929`) and v2 (`d3d3fa8d932f3280`); Phases 2-4 run on each; artifacts under `models/`, per-run reports under `reports/`. Numbers and what they mean: README "Progress and findings".
+- v1 and v2 are both superseded. v2 fixed the chat-shaped grouping partly (twin rate 43% -> 39%) and added legitimate emails (FPR 0%), but its BIPIA document key was not whitespace-normalized: BIPIA has only 182 base documents, 18 still straddle train and test, and injected rows outnumber clean 40:1 in train. Never promote a v1 or v2 model.
+- Phase 3 has **not cleared the promotion gate** (`docs/PLAN.md` §4, recall-at-FPR plus document-shaped FPR): on v2 the TF-IDF baseline ties it at the 1% FPR budget.
+- Phase 4 on v2: holdout accuracy 0.901, FP 9.4%, FN 10.3%; tracks the test split. No LoRA eval exists yet, so no head-to-head.
+- **Next action:** v3 data build (`docs/PROCESS.md` §2), rerun Phases 2-4, compare the report folders.
+- Every notebook's last cell writes a per-run report folder under `reports/`; `scripts/export_html.sh` exports executed notebooks to HTML.
 - The dataset recipe to start from is frozen in the LoRA notebook `safety/notebooks/prompt_injection_lora_qwen38_27b.ipynb`: Nemotron Safety Guard v3 `jailbreaking` rows and WildGuardMix adversarial as INJECTION, WildGuardMix benign as SAFE, with the subcategory-to-reason map there. Six of the nine reasons have zero training rows in that recipe; closing that gap is a Phase 4 job.
 
 Full detail: `docs/PLAN.md` (design and Open WebUI integration), `docs/PROCESS.md` (how to run), `docs/EVALUATION.md` (verification criteria).

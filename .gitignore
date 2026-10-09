@@ -41,3 +41,6 @@ Thumbs.db
 # Prompt-injection NN artifacts
 data/
 models/
+
+# HTML exports of executed notebooks (scripts/export_html.sh); the notebooks themselves are committed, the Markdown reports in reports/ travel
+reports/html/
