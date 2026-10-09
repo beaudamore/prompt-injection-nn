@@ -134,7 +134,7 @@ Covered by this hook because they all flow through the same sources list: knowle
 prompt-injection-nn/
   docs/PLAN.md, PROCESS.md
   data/source-raw/, source-clean-v1/, synthetic/     (gitignored)
-  notebooks/datagen/phase_1_prompt_injection_datagen_v2.ipynb   current
+  notebooks/datagen/phase_1_prompt_injection_datagen_v3.ipynb   current
   notebooks/training/phase_2_baselines.ipynb
   notebooks/training/phase_3_text_cnn_bigru.ipynb
   notebooks/eval/phase_4_eval_against_lora_holdouts.ipynb
