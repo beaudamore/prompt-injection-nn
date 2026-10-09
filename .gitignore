@@ -1,0 +1,43 @@
+# Generated datasets and model artifacts
+data/source-raw/
+data/source-clean/
+data/source-clean-*/
+data/synthetic/
+models/
+
+# Notebook state
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+
+# Training outputs and checkpoints
+checkpoints/
+runs/
+wandb/
+*.ckpt
+*.safetensors
+
+# Logs, temporary files, and local configuration
+*.log
+*.tmp
+*.temp
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Prompt-injection NN artifacts
+data/
+models/
