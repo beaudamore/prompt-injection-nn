@@ -23,13 +23,13 @@ Notebooks in this repo are committed **with outputs** and are the record of a ru
 
 ```bash
 # print a cell's source
-python -I .claude/skills/notebook-editing/nb_tools.py dump notebooks/training/phase2_baselines.ipynb 5
+python -I .claude/skills/notebook-editing/nb_tools.py dump notebooks/training/phase_2_baselines.ipynb 5
 
 # list cells with type, exec count, first line
-python -I .claude/skills/notebook-editing/nb_tools.py outline notebooks/training/phase2_baselines.ipynb
+python -I .claude/skills/notebook-editing/nb_tools.py outline notebooks/training/phase_2_baselines.ipynb
 
 # normalize CRLF -> LF in place and compile-check every code cell
-python -I .claude/skills/notebook-editing/nb_tools.py verify notebooks/training/phase2_baselines.ipynb
+python -I .claude/skills/notebook-editing/nb_tools.py verify notebooks/training/phase_2_baselines.ipynb
 ```
 
 For the replacement itself, write a short script that loads the JSON, asserts the single match, replaces, and saves with `open(path, "w", encoding="utf-8", newline="\n")` and `json.dump(nb, f, indent=1, ensure_ascii=False)` followed by a trailing `"\n"`. Then run `verify`.

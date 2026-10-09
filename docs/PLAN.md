@@ -53,14 +53,16 @@ These two gave the LoRA 11,872 training rows: 4,500 WildGuardMix adversarial, 3,
 
 ### 2.2 Candidate sources to verify before use
 
-These are known to exist in the community but have **not** been verified on Hugging Face for this project. Each must be checked for schema, license, and overlap with 2.1 before entering the pipeline. Record the result in this table.
+Verified on Hugging Face on 2026-10-09 (schema, license, splits, and a sample of rows). The datagen notebook uses the accepted ones.
 
-| Candidate | What it would add | Status |
+| Candidate | What it adds | Status |
 |---|---|---|
-| `deepset/prompt-injections` | Short direct-injection vs. benign prompts, multilingual | unverified |
-| `jackhhao/jailbreak-classification` | Jailbreak vs. benign prompts | unverified |
-| Indirect-injection benchmarks (BIPIA-style, Open-Prompt-Injection-style) | Instructions embedded in documents, emails, web pages: the RAG case | unverified; may need conversion from GitHub release to a local HF-format dataset |
-| Benign document corpora (e.g. Wikipedia or technical docs samples) | Long, prose-shaped SAFE negatives so the model does not learn "chat-shaped = safe, document-shaped = injection" | unverified; pick one with a clear license |
+| `deepset/prompt-injections` | Short direct-injection vs. benign prompts, en/de | **accepted.** 546 train + 116 test rows, `text` + `label` (1 = injection), apache-2.0. Positives mapped to Override Attempt (source-level, weak). |
+| `jackhhao/jailbreak-classification` | DAN-style jailbreak vs. benign role-play prompts | **accepted.** 1,044 train + 262 test rows, `prompt` + `type`, apache-2.0. Jailbreak rows mapped to Jailbreak Technique. Overlaps Nemotron templates; handled by the template grouping. |
+| `geodesic-research/bipia` | BIPIA: instructions embedded in emails, tables and code at a known position, the RAG case | **accepted.** 41,250 rows, cc-by-sa-4.0; `context` already contains `attack_str` at `position`; 125 distinct attack strings over about 850 base documents. Injected rows grouped by attack string, 48 rows per string; clean documents recovered by removing the attack string. Mapped to Embedded Instruction. |
+| `wikimedia/wikipedia` `20231101.en` | Prose-shaped SAFE negatives | **accepted.** cc-by-sa-3.0, streamed; first 1,500 articles split into paragraphs of 200+ characters, capped at 6,000. |
+| `xTRam1/safe-guard-prompt-injection` | 10k injection vs. safe prompts | **rejected:** no license on the dataset card. |
+| `nvidia/Nemotron-RL-Agentic-Indirect-Prompt-Injection-v1` | Indirect injection inside tool results, agentic | **deferred:** cc-by-4.0, but a raw `train.jsonl` of agent traces with no documented schema. Revisit for a later data version. |
 
 ### 2.3 Generated hard examples
 
@@ -82,14 +84,16 @@ Benign lookalikes must be generated alongside: security write-ups quoting attack
 ### 2.5 Known risks
 
 - Chat-shaped vs. document-shaped bias (see 2.2, last row).
+- **Document reuse inside BIPIA (found on v1).** BIPIA repeats about 850 base documents under 125 attack strings. Grouping by attack string alone lets a base document appear attacked in train and clean in test, and the model learns the document. v2 partitions base documents and attack strings jointly, so test injected rows have an unseen document and an unseen attack string, and adds structured benign documents from outside BIPIA. Found on v2: BIPIA has only 182 distinct base documents once whitespace is normalized, v2's document key was not normalized, and injected rows outnumbered clean ones 40:1 in train. v3 keys documents by normalized text and caps injected rows at three per document.
+- **Template reuse inside the jailbreak corpora (found on v1).** A 12-word leading-template key left a 42% six-word twin rate between train and test. v2 uses a shorter template key and a lower near-duplicate threshold, and reports the twin rate as the regression indicator.
 - Reason labels are weak: most come from a subcategory map, not human annotation. Report reason accuracy separately and do not gate on it in phase 1.
 - Live attack strings in the data. Never execute or paste them into a real model session outside the notebooks.
 
 ## 3. Model Architecture
 
-**Stage A, baselines** (`notebooks/training/phase2_baselines.ipynb`): logistic regression on TF-IDF (word and char n-grams) and XGBoost on the engineered features. Calibrated on validation only; thresholds by validation F1. These set the bar.
+**Stage A, baselines** (`notebooks/training/phase_2_baselines.ipynb`): logistic regression on TF-IDF (word and char n-grams) and XGBoost on the engineered features. Calibrated on validation only; thresholds by validation F1. These set the bar.
 
-**Stage B, neural model** (`notebooks/training/phase3_text_cnn_bigru.ipynb`): the `email-classifier-nn` Phase 3 architecture, a 1D-CNN over a train-only vocabulary feeding a bidirectional GRU with masked max-pooling, with **two heads**: a binary injection head and a nine-way reason head. Reason loss is masked to positive rows. Reason is reported only when the binary head fires. Target: a few hundred thousand parameters, sub-10 ms per chunk on CPU in a batch.
+**Stage B, neural model** (`notebooks/training/phase_3_text_cnn_bigru.ipynb`): the `email-classifier-nn` Phase 3 architecture, a 1D-CNN over a train-only vocabulary feeding a bidirectional GRU with masked max-pooling, with **two heads**: a binary injection head and a nine-way reason head. Reason loss is masked to positive rows. Reason is reported only when the binary head fires. Target: a few hundred thousand parameters, sub-10 ms per chunk on CPU in a batch.
 
 Tokenization must preserve the things attacks are made of: punctuation runs, angle brackets, pipe characters, and case. Do not lowercase blindly; keep a cased vocab or add case-shape tokens.
 
@@ -99,6 +103,7 @@ Tokenization must preserve the things attacks are made of: punctuation runs, ang
 
 - **Metrics**: precision, recall, F1, ROC-AUC, average precision, Brier, log loss, confusion counts, FPR. Reason-head accuracy and per-reason precision/recall reported separately.
 - **Gates for promotion**: beat the Phase 2 winner on injection recall at an FPR low enough for document traffic. FPR matters more here than in the chat filter: dropping a benign chunk silently degrades answers. Target FPR on the benign-document negatives must be reported on its own.
+  **Made concrete after the v1 runs (2026-10-09):** the gate is recall at FPR budgets of 1%, 0.5% and 0.1% on the locked test split, the false-positive rate on each document-shaped SAFE source reported separately, and adversarial recall. F1 at the max-F1 threshold is reported but is not a gate: on v1 the TF-IDF baseline matched the neural model on F1 while the neural model caught nearly three times as many attacks at the 0.1% budget.
 - **Comparability with the LoRA**: evaluate on exactly the LoRA's held-out sets, WildGuardMix `wildguardtest` plus Nemotron held-out `jailbreaking`, and write `eval_*.json` with the same fields the LoRA eval notebooks write. Note that no LoRA `eval_*.json` exists yet; running the LoRA eval is the only way to get a real head-to-head.
 - **Adversarial robustness** on the locked obfuscated set from day one.
 - **Explainability**: integrated gradients over tokens, so a reviewer can see which span triggered the verdict.
@@ -129,10 +134,10 @@ Covered by this hook because they all flow through the same sources list: knowle
 prompt-injection-nn/
   docs/PLAN.md, PROCESS.md
   data/source-raw/, source-clean-v1/, synthetic/     (gitignored)
-  notebooks/datagen/prompt_injection_datagen.ipynb
-  notebooks/training/phase2_baselines.ipynb
-  notebooks/training/phase3_text_cnn_bigru.ipynb
-  notebooks/eval/eval_against_lora_holdouts.ipynb
+  notebooks/datagen/phase_1_prompt_injection_datagen_v2.ipynb   current
+  notebooks/training/phase_2_baselines.ipynb
+  notebooks/training/phase_3_text_cnn_bigru.ipynb
+  notebooks/eval/phase_4_eval_against_lora_holdouts.ipynb
   src/prompt_injection_nn/                         package: tokenizer, model, classify API
   filter/safety_filter_rag_injection_scan.py       Open WebUI request-hook filter
   models/<run-id>/                                 (gitignored)

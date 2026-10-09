@@ -4,7 +4,7 @@
 **Audience:** anyone running or extending this repo, on the DGX Spark or on their own machine.
 **Companion docs:** `PLAN.md` (why and what), `../README.md` (status).
 
-This repo follows the `email-classifier-nn` process. Sections that depend on notebooks not yet written are marked *pending* and will be filled in as each phase lands.
+This repo follows the `email-classifier-nn` process. Phases 1 to 4 have notebooks; section 7 (the filter) is pending Phase 5.
 
 ---
 
@@ -14,16 +14,16 @@ This repo follows the `email-classifier-nn` process. Sections that depend on not
 Hugging Face sources (+ gated generated rows, Phase 4)
       │
       ▼
-[Phase 1] notebooks/datagen/prompt_injection_datagen.ipynb              (pending)
+[Phase 1] notebooks/datagen/phase_1_prompt_injection_datagen_v2.ipynb
       │   normalize → quality gates → exact + MinHash dedupe → grouped 80/10/10 split
       │   → engineered features → adversarial variants (train only) → manifest
       ▼
 data/source-clean-v1/{train,val,test,adversarial_test}.parquet + manifest.json
       │
-      ├──▶ [Phase 2] notebooks/training/phase2_baselines.ipynb           (pending)
+      ├──▶ [Phase 2] notebooks/training/phase_2_baselines.ipynb           
       │         TF-IDF logistic regression + XGBoost → models/phase2-v1-<fp>/
       │
-      └──▶ [Phase 3] notebooks/training/phase3_text_cnn_bigru.ipynb      (pending)
+      └──▶ [Phase 3] notebooks/training/phase_3_text_cnn_bigru.ipynb      
                 CNN + BiGRU, binary + reason heads → models/phase3-cnn-bigru-v1-<fp>/
                       │
                       ▼
@@ -38,7 +38,9 @@ data/source-clean-v1/{train,val,test,adversarial_test}.parquet + manifest.json
 
 | Version | Directory | Sources | Status |
 |---|---|---|---|
-| v1 | `data/source-clean-v1/` | per `PLAN.md` §2.1, plus whichever §2.2 candidates pass verification | not built |
+| v1 | `data/source-clean-v1/` | eight sources per `PLAN.md` §2.1-2.2; fingerprint `febe6837be209929` | Built 2026-10-09; Phases 2-3 trained on it. **Superseded pending v2**: BIPIA base documents straddle splits (61% FPR on clean BIPIA documents) and chat-shaped templates repeat across splits (42% six-word twin rate). Frozen for the record. |
+| v2 | `data/source-clean-v2/` | v1 sources plus legitimate emails; BIPIA partitioned jointly by document and attack string; template key 8 words, MinHash 0.80; fingerprint `d3d3fa8d932f3280` | Built 2026-10-09; Phases 2-4 run on it (reports in `reports/`). **Superseded pending v3**: the BIPIA document key was not whitespace-normalized, so 18 base documents are still attacked in both train and test, and injected BIPIA rows outnumber clean ones 40:1 in train. Frozen for the record. |
+| v3 | `data/source-clean-v3/` | v2 with BIPIA keyed by normalized base text and capped at three attacks per base document | planned |
 
 When a version is retired, record why here. The `email-classifier-nn` v1 contamination note is the model.
 
@@ -62,13 +64,14 @@ All notebooks will carry the same resolver as `email-classifier-nn`:
 
 ## 4. Running a full cycle
 
-*Pending until the notebooks exist.* The shape will be:
+Run the notebooks in this order; each asserts its inputs before doing any work.
 
 1. **Phase 1**: run the datagen notebook top to bottom; confirm the manifest counts and per-split reason distribution; confirm no cross-split leakage.
 2. **Phase 2**: run the baselines notebook; the selected winner is the bar for Phase 3.
 3. **Phase 3**: run the neural notebook; compare against Phase 2 on the gates in `PLAN.md` §4.
 4. **Eval**: run the eval notebook against the LoRA's held-out sets; it writes `eval_*.json` in the same format the `safety` repo's eval notebooks use.
-5. **After a run**: update the README results table with numbers, device, and date; commit the executed notebooks from the machine that ran them.
+5. **Reports**: the last cell of every notebook writes `report.md` plus its plots into a folder per run, `reports/<UTC stamp>_<phase>_<dataset version>_<fingerprint>/`. `reports/` is tracked; `models/` and `data/` are not, so the reports are what travels. After Jupyter has saved the executed notebooks, run `scripts/export_html.sh` to export them as self-contained HTML into `reports/html/<UTC stamp>/` as the full audit trail.
+6. **After a run**: update the README results table with numbers, device, and date; commit the executed notebooks and the reports from the machine that ran them.
 
 Never execute or paste attack strings from the data into a real model session outside the notebooks.
 
