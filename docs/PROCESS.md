@@ -14,7 +14,7 @@ This repo follows the `email-classifier-nn` process. Phases 1 to 4 have notebook
 Hugging Face sources (+ gated generated rows, Phase 4)
       │
       ▼
-[Phase 1] notebooks/datagen/phase_1_prompt_injection_datagen_v2.ipynb
+[Phase 1] notebooks/datagen/phase_1_prompt_injection_datagen_v3.ipynb
       │   normalize → quality gates → exact + MinHash dedupe → grouped 80/10/10 split
       │   → engineered features → adversarial variants (train only) → manifest
       ▼
