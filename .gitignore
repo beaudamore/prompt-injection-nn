@@ -11,6 +11,10 @@ models/
 
 # Python caches and environments
 __pycache__/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
 *.py[cod]
 *.so
 .venv/

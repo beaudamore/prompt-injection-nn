@@ -13,13 +13,15 @@ Replaces the per-call LLM round trip of the existing
 stays the detector for typed chat prompts; this model covers the retrieval path, where a single
 turn can carry ten or more chunks.
 
-**Status (2026-10-09):** four data builds (v1 to v4), Phases 2 to 4 run on v1 to v3, every run
-reported under `reports/`. **On v3 the neural model lost the promotion gate to the TF-IDF baseline at
-every FPR budget**, and the v3 test set turned out to measure the wrong thing: 82% chat-shaped rows,
-53 document-shaped attacks from one source. v4 rebuilds the data around the product's actual input
-(documents, emails, tool results, agent messages) from eleven newly verified Hugging Face sources;
-Phases 2 to 4 on v4 are the next run. New to the project? Read `docs/LEARNING.md` first. Design in
-`docs/PLAN.md`, how to run in `docs/PROCESS.md`.
+**Status (2026-10-10):** four data builds; Phases 2 to 4 run on each; every run reported under `reports/`.
+**On v4 the neural model clears the promotion gate on the product's input.** Judged on document and
+agentic test rows at false-positive budgets of 1%, 0.5% and 0.1%, both the CNN + BiGRU and its mean
+ensemble with the TF-IDF baseline beat the baseline at every budget; the ensemble is the shipped
+backend (recall 0.961 / 0.943 / 0.909 on those rows, baseline 0.908 / 0.867 / 0.843). The `src/`
+package, the Open WebUI request-hook filter (shadow mode by default), unit and filter tests and CI
+exist. Not yet done: a shadow-mode pilot on live traffic, the operator's false-positive budget, the
+LoRA head-to-head, and human label review. New to the project? Read `docs/LEARNING.md` first; the
+numbers are in `docs/MODEL_CARD.md`; design in `docs/PLAN.md`; how to run in `docs/PROCESS.md`.
 
 ---
 
@@ -224,18 +226,67 @@ Twin-rate caveats, recorded per source in the manifest: Kubernetes manifests sha
 contestants (64% even after the subject line is excluded from the key); PIArena and BIPIA are near
 zero. Overall chat twin rate 32%, document 59%, agentic 19%.
 
-**Next run:** Phases 2, 3 and 4 on v4, then re-apply the gate. If the neural model still loses to
-TF-IDF at the FPR budgets, the baseline ships behind the `src/` API.
+### Phase 2 and Phase 3 on v4 (2026-10-10, locked test split, DGX Spark CUDA)
+
+Three candidates are scored on identical rows: the Phase 2 TF-IDF baseline, the Phase 3 CNN + BiGRU
+(padding-invariant since 2026-10-10), and their mean ensemble.
+
+| Model | F1 | Recall | FPR | Recall at FPR 1% | 0.5% | 0.1% | Adversarial recall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| TF-IDF logistic regression (Phase 2 winner) | 0.900 | 0.928 | 9.5% | 0.702 | 0.630 | 0.378 | 0.966 |
+| CNN + BiGRU, two heads (Phase 3) | 0.896 | 0.927 | 9.9% | 0.704 | 0.648 | 0.465 | 0.965 |
+| **Ensemble, mean of both (shipped)** | **0.913** | 0.926 | **7.2%** | **0.750** | **0.686** | **0.507** | **0.967** |
+
+On the product's rows, test document + agentic (3,146 rows, 1,590 attacks), recall at FPR budget
+with the threshold chosen within those rows:
+
+| Model | FPR 1% | FPR 0.5% | FPR 0.1% |
+| --- | ---: | ---: | ---: |
+| TF-IDF logistic regression | 0.908 | 0.867 | 0.843 |
+| CNN + BiGRU | 0.954 | 0.930 | 0.890 |
+| **Ensemble** | **0.961** | **0.943** | **0.909** |
+
+What the filter ships with: thresholds chosen on validation document + agentic rows. At the default
+`retrieval_fpr_0.01` the ensemble reaches recall 0.971 at 1.55% FPR on the test document + agentic
+rows; at `retrieval_fpr_0.001`, 0.904 at 0.06%. Latency for ten 1,000-character chunks on the
+Spark's CPU: ensemble p95 27 ms, CNN 16 ms, TF-IDF 4 ms.
+Slices at the F1-max threshold: document recall / FPR, ensemble 0.978 / 1.8% (TF-IDF 0.970 / 4.9%);
+agentic 0.966 / 0.4% (0.963 / 2.6%); chat 0.891 / 9.4% (0.900 / 11.4%). Reason head: all nine reasons
+defined, accuracy 0.943, macro-F1 0.811. Every number with its interval: `docs/MODEL_CARD.md`.
+Phase 4 on the LoRA held-out sets (chat-shaped): accuracy 0.889, FP 13.3%, FN 9.2%.
+
+### What the v4 numbers mean
+
+1. **The gate is cleared, on the rows that matter.** `PLAN.md` section 4 was made concrete: beat the
+   baseline on document and agentic rows at every budget, keep adversarial recall. Both neural
+   candidates do; the ensemble does by the widest margin and is the recommended backend in `gate.json`.
+2. **The target is met on retrieval text.** The working target was 90% recall at 1% FPR on document
+   and agentic data; the ensemble reaches 96% at 1% and 91% at 0.1%. The baseline alone would have
+   shipped at 91% / 84%.
+3. **Chat remains weak and out of scope** (64% recall at 1% FPR for the ensemble). The LoRA keeps the
+   typed-prompt path. The Phase 4 holdout numbers, which are chat-shaped, moved down slightly from v3
+   for the same reason: v4 put the training weight on documents.
+4. **The baseline's false positives come from structured documents** (clean BIPIA documents 83%,
+   Kubernetes manifests 16%) that a bag of words reads as attack-shaped; the CNN and the ensemble
+   handle them (17% and 5% for the CNN).
+5. **What the tests caught.** The package's batch-versus-single test found that the BiGRU read the
+   padding, so scores depended on batch composition. The forward pass now uses packed sequences and the
+   model was retrained; numbers above are from the fixed model. Parity between the package (fp32,
+   CPU) and the notebook (bf16, CUDA): TF-IDF exact, CNN within 0.0013.
+6. **Still open before enforcement:** a week of shadow mode on a real instance, the operator's
+   false-positive budget, the LoRA eval for the head-to-head, a red-team set of hand-written attacks,
+   and the human label review (`docs/EVALUATION.md` sections 10 and 11).
 
 ---
 
-## What it will produce
+## What it produces
 
 | Artifact | Purpose |
 |---|---|
-| `src/` package | `classify(text)` and `classify_batch(texts)` returning a probability, a verdict, and a reason from the nine-reason taxonomy shared with the Open WebUI filter. |
-| `filter/` | An Open WebUI `request`-hook filter that scans every `<source>` block the retrieval pipeline injected, drops flagged chunks, and removes them from the citation list. No Open WebUI patch required. |
-| `models/<run-id>/` | Versioned weights, vocab, thresholds, metrics, and a run manifest tied to the dataset fingerprint. Gitignored; rebuilt by running the notebooks. |
+| `src/prompt_injection_nn` | `load_detector()`, `classify(text)`, `classify_batch(texts)` returning a `Verdict` (label, calibrated probability, reason from the nine-reason taxonomy, the operating threshold). Three backends: `cnn_bigru`, `tfidf_logreg`, `ensemble_mean`; the default is the Phase 3 gate's recommendation. Budgets `retrieval_fpr_0.01` (default), `_0.005`, `_0.001` are thresholds chosen on validation document and agentic rows. Long inputs are scored in overlapping windows. CLI: `prompt-injection-nn "text"`. See `src/README.md`. |
+| `filter/safety_filter_rag_injection_scan.py` | Open WebUI `request`-hook filter: finds every `<source>` block retrieval appended, classifies the bodies in one batch, and in enforce mode removes flagged blocks from the context and from `metadata["sources"]` so they neither reach the model nor appear as citations. Shadow (log-only) mode by default. Fails open. Verified against the 0.11.4 rendering. See `filter/README.md`. |
+| `tests/` | Tokenizer, detector contract, filter behaviour (stub detector), and artifact parity against the notebooks' `metrics.json`. `pytest` runs anywhere; parity needs the model folders. CI in `.github/workflows/tests.yml`. |
+| `models/<run-id>/` | Versioned weights, vocab, thresholds per budget, metrics, per-row probabilities, `gate.json`, and a run manifest tied to the dataset fingerprint. Gitignored; rebuilt by running the notebooks. |
 
 ## Output contract
 
@@ -259,6 +310,7 @@ prompt-injection-nn/
 ├── .claude/skills/    pipeline-status, notebook-editing
 ├── docs/
 │   ├── LEARNING.md    Every concept from zero: injection, splits, leakage, the gate, the scores, the data search
+│   ├── MODEL_CARD.md  Intended use, data, architectures, every v4 number, failure modes, artifacts
 │   ├── PLAN.md        Scope, data strategy, architecture, Open WebUI integration, phase roadmap
 │   ├── PROCESS.md     How to run the pipeline on the DGX Spark, a Mac, or CPU
 │   └── EVALUATION.md  Verification protocol: leakage audit, metrics, CIs, robustness, filter tests, human review
@@ -267,8 +319,10 @@ prompt-injection-nn/
 │   ├── training/      Phase 2 baselines, Phase 3 neural model
 │   └── eval/          Phase 4: evaluation against the LoRA's held-out sets
 ├── reports/           One folder per executed run: report.md and plots (tracked; data and models are not)
-├── src/               Installable inference package
-├── filter/            Open WebUI request-hook filter
+├── src/               Installable inference package (prompt_injection_nn)
+├── filter/            Open WebUI request-hook filter, shadow mode by default
+├── tests/             Unit, filter and parity tests; .github/workflows/tests.yml runs them
+├── scripts/           export_html.sh, benchmark_latency.py
 ├── data/              (gitignored) raw pulls and clean splits
 └── models/            (gitignored) versioned run artifacts
 ```

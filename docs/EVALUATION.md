@@ -45,7 +45,7 @@ This protocol is the email-classifier-nn protocol adapted to a document-scanning
 | Average precision (PR-AUC) | Headline ranking metric |
 | ROC-AUC | Secondary |
 | Precision, recall, F1, specificity, FPR, confusion matrix | At the selected threshold |
-| **Recall at fixed FPR** (recall@FPR=1%, 0.5%, 0.1%) | The deployment question. A dropped benign chunk silently degrades an answer, so the FPR budget on documents is the binding constraint, not recall |
+| **Recall at fixed FPR** (recall@FPR=1%, 0.5%, 0.1%) | The deployment question. A dropped benign chunk silently degrades an answer, so the FPR budget on documents is the binding constraint, not recall. **Done** (v4): overall, per shape, and on the gate rows (document + agentic) in every Phase 2 and 3 report |
 | FPR at fixed recall (FPR@recall=95%) | Inverse framing |
 | Brier, log loss, ECE, MCE, reliability diagram | Calibration; Platt on `val`, isotonic compared |
 
@@ -60,7 +60,7 @@ This protocol is the email-classifier-nn protocol adapted to a document-scanning
 
 ### 3.3 Operating point
 
-F1-max on `val` for development. For deployment, the threshold is chosen from the recall@FPR table against an FPR budget stated in advance by the operator (section 10.3). The chosen point and the budget are recorded in `thresholds.json`.
+F1-max on `val` for development. For deployment, the threshold is chosen from the recall@FPR table against an FPR budget stated in advance by the operator (section 10.3). **Done** (v4): every run's `thresholds.json` carries thresholds per budget chosen on all validation rows (`fpr_budget_thresholds_val`) and on validation document + agentic rows only (`fpr_budget_thresholds_val_retrieval`), which is what the retrieval filter sees and ships with. The package exposes them as budgets; the filter defaults to `retrieval_fpr_0.01`. The operator interview that sets the budget (10.3) is still open.
 
 ### 3.4 Slice-based evaluation
 
@@ -79,7 +79,7 @@ Every 3.1 metric per slice, with the worst slice called out.
 
 | Requirement | Method |
 |---|---|
-| Confidence intervals | Percentile bootstrap, 1,000 resamples, 95% CI on AP, ROC-AUC, F1, recall, FPR, recall@FPR |
+| Confidence intervals | Percentile bootstrap, 1,000 resamples, 95% CI on AP, ROC-AUC, F1, recall, FPR, recall@FPR. **Done** for the headline metrics in every report; recall@FPR intervals open |
 | Paired model comparison | Paired bootstrap on the metric difference; McNemar's test on disagreements; DeLong for AUC |
 | **Comparison with the LoRA** | Same held-out rows, same metrics, same `eval_*.json` field names as the `safety` eval notebooks. The LoRA's eval has not been run yet; running it is a prerequisite for any claim that the NN is comparable |
 | Effect size | Absolute differences and chunks-per-10,000 affected, not only p-values |
@@ -89,7 +89,7 @@ Every 3.1 metric per slice, with the worst slice called out.
 
 | Test | Method |
 |---|---|
-| Adversarial obfuscation | Locked set: homoglyphs, zero-width characters, delimiter wrapping, Unicode tag characters, base64 or ROT13-wrapped instructions, case and whitespace noise. Recall and probability shift reported |
+| Adversarial obfuscation | Locked set: homoglyphs, zero-width characters, delimiter wrapping, Unicode tag characters, base64 or ROT13-wrapped instructions, case and whitespace noise. Recall and probability shift reported. **Done** for homoglyph, zero-width, delimiter wrap, case and whitespace noise (per-kind recall in every report); tag characters and encoded wrappers open |
 | Leave-one-source-out | Train without one source, test on it |
 | Position sensitivity | The same injected instruction at the start, middle, and end of a long benign chunk; recall per position |
 | Dilution | Injection text as 50%, 10%, 2% of a chunk; recall vs dilution curve |
@@ -121,7 +121,7 @@ The filter sits on the critical path of every chat turn with retrieval.
 | Measurement | Target |
 |---|---|
 | Parameter count and model size | Hundreds of thousands of parameters; single-digit MB |
-| Latency, batch of 10 chunks at 512 tokens, CPU | p50 and p95 over 1,000 warm calls; **p95 under 100 ms** on the Spark's CPU and on a laptop CPU, reported with hardware |
+| Latency, batch of 10 chunks at 512 tokens, CPU | p50 and p95 over 1,000 warm calls; **p95 under 100 ms** on the Spark's CPU and on a laptop CPU, reported with hardware. **Done** on the Spark (p95 about 32 ms, CNN alone); laptop CPU and the ensemble's TF-IDF cost open |
 | Latency, batch of 1 | p50 and p95 |
 | Throughput | Chunks per second at batch 32, CPU |
 | Peak memory | During inference |
@@ -133,12 +133,12 @@ The filter sits on the critical path of every chat turn with retrieval.
 |---|---|
 | Notebook structural validation | As in the email repo (`notebook-editing` skill) |
 | Input-contract assertions | Every training notebook asserts manifest counts, label and reason contracts, holdout boundaries before training |
-| Unit tests, `src/` package | Tokenizer determinism; delimiter and tag preservation; `classify` returns the exact contract string; `classify_batch` order preservation; empty and oversized input handling; thread safety of the loaded model |
+| Unit tests, `src/` package | Tokenizer determinism; delimiter and tag preservation; `classify` returns the exact contract string; `classify_batch` order preservation; empty and oversized input handling; thread safety of the loaded model. **Done**: `tests/test_tokenizer.py`, `tests/test_detector.py` (stub run directory, random weights). The batch test caught a padding leak in the BiGRU on 2026-10-10; the model is now padding-invariant (packed sequences) |
 | Unit tests, filter | Given a body with N `<source>` blocks and a stubbed classifier that flags block k: block k is removed from the message text, the matching entry is removed from `metadata["sources"]`, the other blocks are byte-identical, a status event is emitted, the turn is not blocked. Also: no sources present leaves the body untouched; malformed tags do not raise; classifier failure fails open and logs |
-| Contract test against the RAG template | The parser is tested against the exact `<source id name resource-type resource-id>` rendering from the pinned Open WebUI version, and the test states that version |
+| Contract test against the RAG template | The parser is tested against the exact `<source id name resource-type resource-id>` rendering from the pinned Open WebUI version, and the test states that version. **Done**: `tests/test_filter.py` renders blocks exactly as `get_source_context` does in 0.11.4 |
 | Integration test | Filter loaded into a real Open WebUI of the pinned version with a knowledge base containing one planted injected document; the model never sees the planted chunk; the citation list omits it |
-| Golden-metrics regression | Re-run reproduces `metrics.json` within tolerance |
-| CI | Lint, unit tests, schema tests, filter tests, notebook smoke test on a sample |
+| Golden-metrics regression | Re-run reproduces `metrics.json` within tolerance. **Partial**: `tests/test_parity.py` checks that the package reproduces the notebooks' locked-test recall and FPR from the saved artifacts (skipped where artifacts are absent) |
+| CI | Lint, unit tests, schema tests, filter tests, notebook smoke test on a sample. **Partial**: `.github/workflows/tests.yml` runs the unit and filter tests and the notebook structure check on every push; schema tests and the notebook smoke test open |
 
 ## 10. Human verification
 

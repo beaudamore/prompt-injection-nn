@@ -86,7 +86,7 @@ The product reads documents and tool results. But 82 percent of the v3 test set 
 
 - **The promotion gate** is the written rule for replacing the baseline with the neural model: beat it on recall at FPR budgets of 1, 0.5 and 0.1 percent on the locked test, keep the document-slice FPR low, and keep adversarial recall. It is written down before the run so the goalposts cannot move after the numbers are seen.
 
-- **v3 result:** the gate failed. The baseline caught more attacks at every budget.
+- **v3 result:** the gate failed. The baseline caught more attacks at every budget. (v4, below, reversed this on the rows that matter.)
 
 | Locked test, v3 | Recall at FPR 1 % | at 0.5 % | at 0.1 % |
 |---|---:|---:|---:|
@@ -123,16 +123,22 @@ The search on 2026-10-09 looked for three things the data lacked: attacks hidden
 
 **One warning.** Everything except LLMail, the in-the-wild prompts, and the Kubernetes files is machine-generated. Generated sets reuse skeletons, the template problem the twin rate measures. v4 reports the twin rate per shape so this stays visible.
 
-## 8. What is left before anyone should run this in production
+## 8. What v4 showed, and the two things it taught
 
-1. **Rerun Phases 2, 3 and 4 on v4** and re-apply the gate. If the neural model still loses, ship the baseline; the process says so.
-2. **Reach a usable number**: something like 90 percent recall at 1 percent FPR on document-shaped and agentic-shaped data, with confidence intervals.
-3. **Write the serving code.** The `src/` and `filter/` folders are placeholders. Needed: a function that takes text and returns the verdict, the Open WebUI hook that finds every retrieved chunk and drops flagged ones, unit tests, and a test against the exact chunk format of the pinned Open WebUI version.
-4. **Run the LoRA on the same held-out sets.** The repo's premise is "faster than the LoRA with acceptable loss", and the LoRA side has never been measured.
-5. **Human checks.** A written rubric for what counts as an attack inside a document, a blind review of a label sample, a red-team session with planted documents, and a week of shadow mode where the guard logs but does not act.
-6. **Paperwork.** Model card, datasheet, a LICENSE file, and sign-off by someone who did not build it.
+- **The gate, judged on the product's rows, is cleared.** On test document and agentic rows at a 1 percent false-positive budget the ensemble catches 96 percent of attacks, the CNN 95 percent, the bag-of-words baseline 91 percent; at the strictest 0.1 percent budget, 91 versus 84 percent. The ensemble is the shipped backend. On chat-shaped text all three are weak (about 64 percent at 1 percent) and that path stays with the LoRA.
+- **Why "ensemble"?** Averaging the two models' probabilities. The bag-of-words model and the neural model make different mistakes (the first trips on structured documents, the second on some chat phrasing), so the average is better than either. The process allows an ensemble only when it is named and measured as a candidate, which the Phase 3 notebook now does.
+- **Lesson one: thresholds must be chosen on the input the product sees.** A threshold picked on all validation rows is dominated by chat prompts, and on retrieved chunks it ran at near-zero false positives while leaving recall unused. Every run now also saves thresholds chosen on validation document and agentic rows, and the filter ships with those.
+- **Lesson two: tests find real bugs.** The package's simplest test, "a text must score the same alone and in a batch", failed by 0.002. The backward half of the GRU was reading the padding tokens, so every score depended on what else was in the batch. The model was fixed (packed sequences) and retrained before any number was published.
 
-## 9. Glossary, one line each
+## 9. What is left before anyone should run this in enforce mode
+
+1. **Shadow mode on a real instance for a week.** The filter is installed with `log_only` on, every would-drop is reviewed, and the operator states a dropped-benign-chunk budget. Only then is `log_only` switched off.
+2. **Run the LoRA on the same held-out sets.** The repo's premise is "faster than the LoRA with acceptable loss", and the LoRA side has never been measured.
+3. **A red-team set** of hand-written attacks planted in real documents, since nearly all training attacks are machine-generated.
+4. **Human checks.** A written rubric for what counts as an attack inside a document and a blind review of a label sample.
+5. **Paperwork.** A LICENSE file and sign-off by someone who did not build it. The model card exists (`MODEL_CARD.md`).
+
+## 10. Glossary, one line each
 
 - **Adversarial test**: attacks deliberately disguised, to test robustness to cheap tricks.
 - **Agentic**: text exchanged between software agents and tools rather than typed by a person.
@@ -142,6 +148,8 @@ The search on 2026-10-09 looked for three things the data lacked: attacks hidden
 - **Bootstrap interval**: the wobble range of a score, found by re-sampling the test set.
 - **Calibration**: whether a probability of 0.9 is right nine times in ten.
 - **Chunk**: one retrieved piece of a document, the unit the guard inspects.
+- **Ensemble**: averaging two models' probabilities; here the bag-of-words model and the neural model.
+- **Operating point**: the threshold chosen for a stated false-positive budget, on the input the product actually sees.
 - **CNN**: a neural layer that scans short runs of words for patterns.
 - **Fingerprint**: a code that identifies exactly which data build produced a result.
 - **FPR**: share of harmless chunks wrongly thrown out.

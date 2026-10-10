@@ -41,7 +41,7 @@ data/source-clean-v4/{train,val,test,adversarial_test,lora_holdout}.parquet + ma
 | v1 | `data/source-clean-v1/` | eight sources per `PLAN.md` §2.1-2.2; fingerprint `febe6837be209929` | Built 2026-10-09; Phases 2-3 trained on it. **Superseded pending v2**: BIPIA base documents straddle splits (61% FPR on clean BIPIA documents) and chat-shaped templates repeat across splits (42% six-word twin rate). Frozen for the record. |
 | v2 | `data/source-clean-v2/` | v1 sources plus legitimate emails; BIPIA partitioned jointly by document and attack string; template key 8 words, MinHash 0.80; fingerprint `d3d3fa8d932f3280` | Built 2026-10-09; Phases 2-4 run on it (reports in `reports/`). **Superseded pending v3**: the BIPIA document key was not whitespace-normalized, so 18 base documents are still attacked in both train and test, and injected BIPIA rows outnumber clean ones 40:1 in train. Frozen for the record. |
 | v3 | `data/source-clean-v3/` | v2 with BIPIA keyed by normalized base text and capped at three attacks per base document; fingerprint `a4c8dd4786013cfd` | Built 2026-10-09; Phases 2-4 run on it. **Superseded**: Phase 3 lost the gate to TF-IDF at every FPR budget, and the test set was 82% chat-shaped with 53 document-shaped attacks from one source. |
-| v4 | `data/source-clean-v4/` | v3 plus eleven document, agentic and hard-negative sources (LLMail-Inject, PIArena, Nemotron agentic IPI, Kubernetes manifests, three 3nesdeniz sets, in-the-wild prompts, ogma, S-Labs benign, NotInject); third shape `agentic`; all nine reasons populated | Built 2026-10-09 (see the v4 report under `reports/`). **Current.** Phases 2-4 pending. |
+| v4 | `data/source-clean-v4/` | v3 plus eleven document, agentic and hard-negative sources (LLMail-Inject, PIArena, Nemotron agentic IPI, Kubernetes manifests, three 3nesdeniz sets, in-the-wild prompts, ogma, S-Labs benign, NotInject); third shape `agentic`; all nine reasons populated | Built 2026-10-09 (see the v4 report under `reports/`). **Current.** Phases 2-4 rerun 2026-10-10 with the padding-invariant model and the explicit gate: cleared on document + agentic rows by the CNN and by the TF-IDF+CNN ensemble, which is the shipped backend. Reports under `reports/`, numbers in `MODEL_CARD.md`. |
 
 When a version is retired, record why here. The `email-classifier-nn` v1 contamination note is the model.
 
@@ -101,4 +101,11 @@ GitHub is the hub; each machine is a disposable checkout.
 
 ## 7. Deploying the filter
 
-*Pending Phase 5.* The filter is an Open WebUI `request`-hook filter (see `PLAN.md` §5). It will be loaded into Open WebUI from `filter/` the same way the filters in `openwebui-safety-filters` are, carry an `openwebui:` header line naming the version it was verified against, and read its model path from a valve. The `src/` package is its only dependency beyond the Open WebUI runtime.
+The filter is `filter/safety_filter_rag_injection_scan.py`, an Open WebUI `request`-hook filter (see `PLAN.md` §5 and `filter/README.md`). Steps:
+
+1. Install the package where Open WebUI runs: `pip install /path/to/prompt-injection-nn` in the image, or mount the repo and set the filter's `package_path` valve to its `src/` folder.
+2. Provide a `models/` folder holding a `phase2-*/` and a `phase3-cnn-bigru-*/` run (not in git; copy from the Spark or rerun the notebooks) and point the `models_dir` valve or `PI_NN_MODELS_DIR` at it.
+3. Add the file under Admin, Functions as a filter; enable it globally. Leave `log_only` on. Review the would-drop status lines for a week; set the `budget` valve from the operator's dropped-benign-chunk budget (default `retrieval_fpr_0.01`); then set `log_only` off.
+4. After every Open WebUI upgrade, rerun `pytest tests/test_filter.py` and re-read `get_source_context` in `backend/open_webui/utils/middleware.py`; the header line in the filter names the version it was verified against.
+
+Locally: `pip install -e .[test]` then `pytest` (unit and filter tests run anywhere; `tests/test_parity.py` needs the data and model folders and runs on the Spark).
