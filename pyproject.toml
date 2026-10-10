@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=7", "pandas>=2.0", "pyarrow>=14", "pydantic>=2"]   # pydantic: the Open WebUI filter under test declares its valves with it
+hf = ["transformers>=4.48", "tokenizers>=0.21"]                      # the hf_guard backend (Open WebUI's image already has these)
 
 [project.scripts]
 prompt-injection-nn = "prompt_injection_nn.cli:main"

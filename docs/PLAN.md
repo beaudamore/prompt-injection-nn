@@ -131,9 +131,9 @@ Verified against the Open WebUI source at 0.11.4 (`backend/open_webui/utils/midd
 4. Emits a status event naming the dropped source, and records the event the way the existing block-aware filters do.
 5. Continues the turn. Dropping a chunk is the action; the turn is not blocked. In **shadow mode** (the default valve) the chunk is left in place and the status line says what would have been dropped.
 
-Covered by this hook because they all flow through the same sources list: knowledge-base retrieval, uploaded files (chunked or full-context), web search, and tool results injected through the native tool-call loop (the `request` hook re-runs inside that loop).
+Covered by this hook because they all flow through the same sources list: knowledge-base retrieval, uploaded files (chunked or full-context), web search, and files that were OCR'd or transcribed at upload. Tool results need two paths, verified in 0.11.4: with non-native function calling the result is appended as a source with its text and is a `<source>` block like any other; with native function calling the result lives in a `tool`-role message and its `<source>` tag is rendered with an empty body, so the filter scans each `tool`-role message as one chunk when the `request` hook re-runs inside the tool-call loop, and in enforce mode replaces a flagged result with a short notice (the message itself must stay so the tool call is answered).
 
-**Not covered.** Text typed directly into the prompt never passes through retrieval; the existing inlet filter stays in place for that. Ingest time (knowledge upload) has no filter hook; scanning at upload would need an Open WebUI patch or an external pre-upload scanner, both out of scope for now.
+**Not covered.** Text typed directly into the prompt never passes through retrieval; the existing inlet filter stays in place for that. Images sent to a vision model are passed as image parts, not text; visual prompt injection is a separate problem for a separate detector. Ingest time (knowledge upload) has no filter hook; scanning at upload would need an Open WebUI patch or an external pre-upload scanner, both out of scope for now.
 
 **Latency budget.** Top-k is typically 3 to 10 chunks, more with a reranker. The hook is on the critical path of every turn. A batch of ten 512-token chunks on CPU must stay well under 100 ms.
 

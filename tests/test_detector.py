@@ -24,6 +24,7 @@ def test_classify_returns_contract_and_probability(stub_cnn_run):
         assert v.reason in REASONS
     assert set(v.reason_scores) == set(REASONS)
     assert abs(sum(v.reason_scores.values()) - 1.0) < 1e-6
+    assert v.components == {"cnn_bigru": v.probability}
 
 
 def test_batch_preserves_order_and_length(stub_cnn_run):
