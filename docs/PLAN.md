@@ -62,7 +62,16 @@ Verified on Hugging Face on 2026-10-09 (schema, license, splits, and a sample of
 | `geodesic-research/bipia` | BIPIA: instructions embedded in emails, tables and code at a known position, the RAG case | **accepted.** 41,250 rows, cc-by-sa-4.0; `context` already contains `attack_str` at `position`; 125 distinct attack strings over about 850 base documents. Injected rows grouped by attack string, 48 rows per string; clean documents recovered by removing the attack string. Mapped to Embedded Instruction. |
 | `wikimedia/wikipedia` `20231101.en` | Prose-shaped SAFE negatives | **accepted.** cc-by-sa-3.0, streamed; first 1,500 articles split into paragraphs of 200+ characters, capped at 6,000. |
 | `xTRam1/safe-guard-prompt-injection` | 10k injection vs. safe prompts | **rejected:** no license on the dataset card. |
-| `nvidia/Nemotron-RL-Agentic-Indirect-Prompt-Injection-v1` | Indirect injection inside tool results, agentic | **deferred:** cc-by-4.0, but a raw `train.jsonl` of agent traces with no documented schema. Revisit for a later data version. |
+| `nvidia/Nemotron-RL-Agentic-Indirect-Prompt-Injection-v1` | Indirect injection inside tool results, agentic | **accepted in v4.** cc-by-4.0. The card now documents the schema; `injection.injection_text` is hidden in `environment[...][injection_vector]`. The injected field is the attack document; the other fields of the same name are clean twins. Read from `train.jsonl` directly (the `datasets` library cannot parse its feature types). |
+| `microsoft/llmail-inject-challenge` | Real adaptive attack emails from a public challenge, plus 203 clean emails used for its false-positive tests | **accepted in v4.** MIT. Labelled unique submissions, `api_triggered` only (the injected tool call fired), re-rendered to the email_ham layout. |
+| `sleeepeer/PIArena` | Injected tasks for RAG passages across 16 QA and summarisation tasks | **accepted in v4.** MIT. Clean `context` is the SAFE twin; the task is planted at a seeded sentence boundary for the INJECTION twin. |
+| `rgeada/k8s-resource-prompt-injection` | Real Kubernetes manifests, clean and injected pairs | **accepted in v4.** Apache-2.0. ≤2,500 pairs, ≤3,000 chars. |
+| `3nesdeniz/agentic-prompt-injection-5k`, `agentic-prompt-injection-boundary-pairs`, `english-prompt-injection-3k` | Agentic attacks with matched hard negatives; boundary pairs; direct attacks in eight families | **accepted in v4.** CC-BY-4.0. Attack families mapped onto the nine reasons; boundary scenarios get a forced seeded partition. |
+| `TrustAIRLab/in-the-wild-jailbreak-prompts` | Real jailbreaks and real ordinary prompt templates | **accepted in v4.** MIT. |
+| `axiotic/ogma-prompt-injection-benign`, `S-Labs/prompt-injection-dataset` (benign rows), `leolee99/NotInject` | Hard negatives: everyday requests, commands, code, AI-safety questions, trigger-word benign prompts | **accepted in v4.** Apache-2.0 / MIT / MIT. NotInject is forced into `test`. |
+| `rogue-security/prompt-injections-benchmark`, `Mindgard/evaded-prompt-injection-and-jailbreak-samples` | | **rejected:** CC-BY-NC, non-commercial. |
+| `hackaprompt/hackaprompt-dataset`, `Necent/llm-jailbreak-prompt-injection-dataset`, `prodnull/prompt-injection-repo-dataset` | | **rejected:** gated. |
+| `Horizon-Labs/prompt-injection-eval-suite` | Sixteen test configs including synthetic documents in 30 languages | **evaluation only.** Contains the 3nesdeniz test splits; those configs are contaminated for a v4 model. |
 
 ### 2.3 Generated hard examples
 
@@ -132,9 +141,9 @@ Covered by this hook because they all flow through the same sources list: knowle
 
 ```text
 prompt-injection-nn/
-  docs/PLAN.md, PROCESS.md
-  data/source-raw/, source-clean-v1/, synthetic/     (gitignored)
-  notebooks/datagen/phase_1_prompt_injection_datagen_v3.ipynb   current
+  docs/LEARNING.md, PLAN.md, PROCESS.md, EVALUATION.md
+  data/source-raw/, source-clean-v1..v4/, synthetic/  (gitignored)
+  notebooks/datagen/phase_1_prompt_injection_datagen_v4.ipynb   current (v3 kept for the record)
   notebooks/training/phase_2_baselines.ipynb
   notebooks/training/phase_3_text_cnn_bigru.ipynb
   notebooks/eval/phase_4_eval_against_lora_holdouts.ipynb

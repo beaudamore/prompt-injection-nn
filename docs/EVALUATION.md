@@ -3,7 +3,7 @@
 **Last updated:** 2026-10-09
 **Scope:** what has to be true, and what has to be measured, before a model from this repo is called good and before the filter is loaded into a production Open WebUI. Written so a reviewer can check each item against the notebooks, the run manifests, and the filter tests.
 
-This protocol is the email-classifier-nn protocol adapted to a document-scanning task with a reason head and a latency budget. Everything is **Open** today because nothing has been built; the status column will be maintained as phases land. Section 11 is the backlog order.
+This protocol is the email-classifier-nn protocol adapted to a document-scanning task with a reason head and a latency budget. Phases 1 to 4 have run on v1 to v3 (bootstrap CIs, recall at FPR, slices by shape and source, adversarial variants, latency and the LoRA-format eval are implemented in the notebooks); the filter, human verification and the LoRA head-to-head remain open. Section 11 is the backlog order. For the terms used here, see `LEARNING.md`.
 
 ---
 

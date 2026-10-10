@@ -19,11 +19,12 @@ more chunks and an LLM call per chunk is too slow.
 
 ## Where things stand (2026-10-09)
 
-- Two data builds, v1 (`febe6837be209929`) and v2 (`d3d3fa8d932f3280`); Phases 2-4 run on each; artifacts under `models/`, per-run reports under `reports/`. Numbers and what they mean: README "Progress and findings".
-- v1 and v2 are both superseded. v2 fixed the chat-shaped grouping partly (twin rate 43% -> 39%) and added legitimate emails (FPR 0%), but its BIPIA document key was not whitespace-normalized: BIPIA has only 182 base documents, 18 still straddle train and test, and injected rows outnumber clean 40:1 in train. Never promote a v1 or v2 model.
-- Phase 3 has **not cleared the promotion gate** (`docs/PLAN.md` §4, recall-at-FPR plus document-shaped FPR): on v2 the TF-IDF baseline ties it at the 1% FPR budget.
-- Phase 4 on v2: holdout accuracy 0.901, FP 9.4%, FN 10.3%; tracks the test split. No LoRA eval exists yet, so no head-to-head.
-- **Next action:** v3 data build (`docs/PROCESS.md` §2), rerun Phases 2-4, compare the report folders.
+- Four data builds: v1 (`febe6837…`), v2 (`d3d3fa8d…`), v3 (`a4c8dd47…`), v4 (see README). Phases 2-4 run on v1 to v3; per-run reports under `reports/`. Numbers and what they mean: README "Progress and findings". New reader: `docs/LEARNING.md`.
+- v1 to v3 are superseded; never promote a model trained on them. v3 fixed BIPIA (normalized document key, three attacks per document) and is the honest baseline for comparison.
+- **v3 verdict: Phase 3 lost the promotion gate** (`docs/PLAN.md` §4). TF-IDF logistic regression beats the CNN+BiGRU at every FPR budget on the locked test (recall at FPR 1%: 0.641 vs 0.577). Both are far below a usable number. The v3 test set was 82% chat-shaped with 53 document-shaped attacks from one source, so it barely measured the product's input.
+- v4 rebuilds the data around documents, emails, tool results and agent messages from eleven newly verified Hugging Face sources (licences, schemas and rejections recorded in the v4 datagen notebook and manifest); all nine reasons have training rows; a third shape `agentic` exists. Phase 2/3/4 notebooks point at v4.
+- Phase 4 (LoRA held-out sets) on v3: accuracy 0.905, FP 12.4%, FN 7.1%. No LoRA eval exists yet, so no head-to-head.
+- **Next action:** run Phases 2-4 on v4 from JupyterLab, re-apply the gate, update the README. If the neural model still loses, the baseline ships behind the `src/` API (Phase 5).
 - Every notebook's last cell writes a per-run report folder under `reports/`; `scripts/export_html.sh` exports executed notebooks to HTML.
 - The dataset recipe to start from is frozen in the LoRA notebook `safety/notebooks/prompt_injection_lora_qwen38_27b.ipynb`: Nemotron Safety Guard v3 `jailbreaking` rows and WildGuardMix adversarial as INJECTION, WildGuardMix benign as SAFE, with the subcategory-to-reason map there. Six of the nine reasons have zero training rows in that recipe; closing that gap is a Phase 4 job.
 

@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-10-09
 **Audience:** anyone running or extending this repo, on the DGX Spark or on their own machine.
-**Companion docs:** `PLAN.md` (why and what), `../README.md` (status).
+**Companion docs:** `LEARNING.md` (every concept from zero), `PLAN.md` (why and what), `../README.md` (status and results).
 
 This repo follows the `email-classifier-nn` process. Phases 1 to 4 have notebooks; section 7 (the filter) is pending Phase 5.
 
@@ -14,17 +14,17 @@ This repo follows the `email-classifier-nn` process. Phases 1 to 4 have notebook
 Hugging Face sources (+ gated generated rows, Phase 4)
       │
       ▼
-[Phase 1] notebooks/datagen/phase_1_prompt_injection_datagen_v3.ipynb
+[Phase 1] notebooks/datagen/phase_1_prompt_injection_datagen_v4.ipynb
       │   normalize → quality gates → exact + MinHash dedupe → grouped 80/10/10 split
       │   → engineered features → adversarial variants (train only) → manifest
       ▼
-data/source-clean-v1/{train,val,test,adversarial_test}.parquet + manifest.json
+data/source-clean-v4/{train,val,test,adversarial_test,lora_holdout}.parquet + manifest.json
       │
       ├──▶ [Phase 2] notebooks/training/phase_2_baselines.ipynb           
-      │         TF-IDF logistic regression + XGBoost → models/phase2-v1-<fp>/
+      │         TF-IDF logistic regression + XGBoost → models/phase2-v4-<fp>/
       │
       └──▶ [Phase 3] notebooks/training/phase_3_text_cnn_bigru.ipynb      
-                CNN + BiGRU, binary + reason heads → models/phase3-cnn-bigru-v1-<fp>/
+                CNN + BiGRU, binary + reason heads → models/phase3-cnn-bigru-v4-<fp>/
                       │
                       ▼
               src/ package + filter/ request-hook filter                 (Phase 5)
@@ -40,7 +40,8 @@ data/source-clean-v1/{train,val,test,adversarial_test}.parquet + manifest.json
 |---|---|---|---|
 | v1 | `data/source-clean-v1/` | eight sources per `PLAN.md` §2.1-2.2; fingerprint `febe6837be209929` | Built 2026-10-09; Phases 2-3 trained on it. **Superseded pending v2**: BIPIA base documents straddle splits (61% FPR on clean BIPIA documents) and chat-shaped templates repeat across splits (42% six-word twin rate). Frozen for the record. |
 | v2 | `data/source-clean-v2/` | v1 sources plus legitimate emails; BIPIA partitioned jointly by document and attack string; template key 8 words, MinHash 0.80; fingerprint `d3d3fa8d932f3280` | Built 2026-10-09; Phases 2-4 run on it (reports in `reports/`). **Superseded pending v3**: the BIPIA document key was not whitespace-normalized, so 18 base documents are still attacked in both train and test, and injected BIPIA rows outnumber clean ones 40:1 in train. Frozen for the record. |
-| v3 | `data/source-clean-v3/` | v2 with BIPIA keyed by normalized base text and capped at three attacks per base document | planned |
+| v3 | `data/source-clean-v3/` | v2 with BIPIA keyed by normalized base text and capped at three attacks per base document; fingerprint `a4c8dd4786013cfd` | Built 2026-10-09; Phases 2-4 run on it. **Superseded**: Phase 3 lost the gate to TF-IDF at every FPR budget, and the test set was 82% chat-shaped with 53 document-shaped attacks from one source. |
+| v4 | `data/source-clean-v4/` | v3 plus eleven document, agentic and hard-negative sources (LLMail-Inject, PIArena, Nemotron agentic IPI, Kubernetes manifests, three 3nesdeniz sets, in-the-wild prompts, ogma, S-Labs benign, NotInject); third shape `agentic`; all nine reasons populated | Built 2026-10-09 (see the v4 report under `reports/`). **Current.** Phases 2-4 pending. |
 
 When a version is retired, record why here. The `email-classifier-nn` v1 contamination note is the model.
 
@@ -48,7 +49,7 @@ When a version is retired, record why here. The `email-classifier-nn` v1 contami
 
 ## 3. Where it runs
 
-All notebooks will carry the same resolver as `email-classifier-nn`:
+All notebooks carry the same resolver as `email-classifier-nn`:
 
 **Project root**, in order: `PI_NN_DIR` environment variable; `/workspace/training/prompt-injection-nn` (Spark container); `/home/spark/projects/training/prompt-injection-nn` (Spark host); otherwise walk up from the working directory until a folder containing `docs/PLAN.md` and `notebooks/` is found.
 
