@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7", "pandas>=2.0", "pyarrow>=14"]
+test = ["pytest>=7", "pandas>=2.0", "pyarrow>=14", "pydantic>=2"]   # pydantic: the Open WebUI filter under test declares its valves with it
 
 [project.scripts]
 prompt-injection-nn = "prompt_injection_nn.cli:main"
