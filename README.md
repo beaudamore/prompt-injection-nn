@@ -281,10 +281,22 @@ Phase 4 on the LoRA held-out sets (chat-shaped): accuracy 0.889, FP 13.3%, FN 9.
 
 ## What it produces
 
+**Deploying the filter needs no training.** Download the model bundle from this repo's Releases page,
+extract it into your Open WebUI data directory, add the filter. Step by step in `filter/README.md`.
+
+**Which model the filter runs (2026-10-10).** Shadow mode on a live instance produced false positives on
+web-page boilerplate and API JSON dumps that the in-house models had never seen. A survey of published
+prompt-injection classifiers (`docs/LEARNING.md`) found one built for exactly this input and trained on
+the diverse data we lack: `Horizon-Labs/prompt-injection-guard-base` (ModernBERT, 308M, Apache-2.0). It
+scores those false positives at 0.007 and 0.05 and every planted attack we tried at 0.997 or above. It
+is now a backend of the package (`hf_guard`, CPU, and `hf_guard_http`, served on the GPU by the
+`vllm-prompt-injection-guard` stack) and is judged on our locked v4 rows by the same gate before it
+ships; the in-house CNN supplies the reason label. Speed on the GPU is tens of milliseconds per batch.
+
 | Artifact | Purpose |
 |---|---|
 | `src/prompt_injection_nn` | `load_detector()`, `classify(text)`, `classify_batch(texts)` returning a `Verdict` (label, calibrated probability, reason from the nine-reason taxonomy, the operating threshold). Three backends: `cnn_bigru`, `tfidf_logreg`, `ensemble_mean`; the default is the Phase 3 gate's recommendation. Budgets `retrieval_fpr_0.01` (default), `_0.005`, `_0.001` are thresholds chosen on validation document and agentic rows. Long inputs are scored in overlapping windows. CLI: `prompt-injection-nn "text"`. See `src/README.md`. |
-| `filter/safety_filter_rag_injection_scan.py` | Open WebUI `request`-hook filter: finds every `<source>` block retrieval appended, classifies the bodies in one batch, and in enforce mode removes flagged blocks from the context and from `metadata["sources"]` so they neither reach the model nor appear as citations. Shadow (log-only) mode by default. Fails open. Verified against the 0.11.4 rendering. See `filter/README.md`. |
+| `filter/safety_filter_rag_injection_scan.py` | Open WebUI `request`-hook filter: finds every `<source>` block retrieval appended, classifies the bodies in one batch, and in enforce mode removes flagged blocks from the context and from `metadata["sources"]` so they neither reach the model nor appear as citations. Shadow (log-only) mode by default. Fails open. Creates its own folder under the Open WebUI data directory; `scripts/publish_to_openwebui.py` fills it, so deployment is one command and no stack change. Verified against 0.11.4. See `filter/README.md`. |
 | `tests/` | Tokenizer, detector contract, filter behaviour (stub detector), and artifact parity against the notebooks' `metrics.json`. `pytest` runs anywhere; parity needs the model folders. CI in `.github/workflows/tests.yml`. |
 | `models/<run-id>/` | Versioned weights, vocab, thresholds per budget, metrics, per-row probabilities, `gate.json`, and a run manifest tied to the dataset fingerprint. Gitignored; rebuilt by running the notebooks. |
 
@@ -322,7 +334,7 @@ prompt-injection-nn/
 ├── src/               Installable inference package (prompt_injection_nn)
 ├── filter/            Open WebUI request-hook filter, shadow mode by default
 ├── tests/             Unit, filter and parity tests; .github/workflows/tests.yml runs them
-├── scripts/           export_html.sh, benchmark_latency.py
+├── scripts/           package_release.py (model bundle for Releases), publish_to_openwebui.py (deploy), benchmark_latency.py, export_html.sh
 ├── data/              (gitignored) raw pulls and clean splits
 └── models/            (gitignored) versioned run artifacts
 ```

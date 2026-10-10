@@ -101,11 +101,11 @@ GitHub is the hub; each machine is a disposable checkout.
 
 ## 7. Deploying the filter
 
-The filter is `filter/safety_filter_rag_injection_scan.py`, an Open WebUI `request`-hook filter (see `PLAN.md` §5 and `filter/README.md`). Steps:
+The filter is `filter/safety_filter_rag_injection_scan.py`, an Open WebUI `request`-hook filter (see `PLAN.md` §5 and `filter/README.md`). Since 2026-10-10 the recommended model behind it is the Horizon-Labs guard served by the `vllm-prompt-injection-guard` stack (`compose/live/vllm-prompt-injection-guard.yml`, host port 8009, model in the NAS HF cache); the in-house models remain as the reason head and CPU fallback. Steps:
 
-1. Install the package where Open WebUI runs: `pip install /path/to/prompt-injection-nn` in the image, or mount the repo and set the filter's `package_path` valve to its `src/` folder.
-2. Provide a `models/` folder holding a `phase2-*/` and a `phase3-cnn-bigru-*/` run (not in git; copy from the Spark or rerun the notebooks) and point the `models_dir` valve or `PI_NN_MODELS_DIR` at it.
-3. Add the file under Admin, Functions as a filter; enable it globally. Leave `log_only` on. Review the would-drop status lines for a week; set the `budget` valve from the operator's dropped-benign-chunk budget (default `retrieval_fpr_0.01`); then set `log_only` off.
+1. Get the model pair into the Open WebUI data directory's `prompt-injection-nn/` folder (host side of the data bind mount). Anyone: download the release bundle and extract it there (`filter/README.md`, Install). From a training machine: `python3 scripts/publish_to_openwebui.py --target <data dir>/prompt-injection-nn` copies the newest matching Phase 2 and Phase 3 runs, verifies one data fingerprint, prunes older published runs and writes `published.json`; `python3 scripts/package_release.py` builds the bundle for a GitHub Release. No stack change: the container already mounts that directory, the image already carries torch (CPU), numpy, scipy, scikit-learn, joblib and pydantic, and the filter creates the folder on first load if nothing is there yet. Rerun after every retrain; no restart.
+2. Add the filter file under Admin, Functions; enable it globally. The valve defaults point at the published folder. Leave `log_only` on. Review the would-drop status lines for a week; set the `budget` valve from the operator's dropped-benign-chunk budget (default `retrieval_fpr_0.01`); then set `log_only` off.
+3. Optional hardening: publish with `--target` to a separate folder, bind-mount it read-only, set the two path valves.
 4. After every Open WebUI upgrade, rerun `pytest tests/test_filter.py` and re-read `get_source_context` in `backend/open_webui/utils/middleware.py`; the header line in the filter names the version it was verified against.
 
 Locally: `pip install -e .[test]` then `pytest` (unit and filter tests run anywhere; `tests/test_parity.py` needs the data and model folders and runs on the Spark).

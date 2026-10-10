@@ -40,6 +40,7 @@ class Verdict:
     reason_scores: Dict[str, float] = field(default_factory=dict)   # softmax over REASONS when the backend has a reason head
     backend: str = ""                # "cnn_bigru", "tfidf_logreg" or "ensemble_mean"
     windows: int = 1                 # token windows scored for long inputs (max taken)
+    components: Dict[str, float] = field(default_factory=dict)   # each backend's own probability, e.g. {"cnn_bigru": .82, "tfidf_logreg": .40}
 
     @property
     def contract(self) -> str:
