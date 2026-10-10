@@ -1,0 +1,21 @@
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU torch and the package
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e .[test]
+      - name: Unit tests (tokenizer, detector contract, filter); parity is skipped without model artifacts
+        run: pytest -q
+      - name: Notebook structure check
+        run: python -I .claude/skills/notebook-editing/nb_tools.py verify notebooks/datagen/phase_1_prompt_injection_datagen_v4.ipynb notebooks/training/phase_2_baselines.ipynb notebooks/training/phase_3_text_cnn_bigru.ipynb notebooks/eval/phase_4_eval_against_lora_holdouts.ipynb

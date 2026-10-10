@@ -129,7 +129,7 @@ Verified against the Open WebUI source at 0.11.4 (`backend/open_webui/utils/midd
 2. Classifies the bodies in one batch.
 3. Removes flagged blocks from the message text and the matching entries from `metadata["sources"]`, so they neither reach the model nor appear as citations.
 4. Emits a status event naming the dropped source, and records the event the way the existing block-aware filters do.
-5. Continues the turn. Dropping a chunk is the action; the turn is not blocked.
+5. Continues the turn. Dropping a chunk is the action; the turn is not blocked. In **shadow mode** (the default valve) the chunk is left in place and the status line says what would have been dropped.
 
 Covered by this hook because they all flow through the same sources list: knowledge-base retrieval, uploaded files (chunked or full-context), web search, and tool results injected through the native tool-call loop (the `request` hook re-runs inside that loop).
 
@@ -147,9 +147,11 @@ prompt-injection-nn/
   notebooks/training/phase_2_baselines.ipynb
   notebooks/training/phase_3_text_cnn_bigru.ipynb
   notebooks/eval/phase_4_eval_against_lora_holdouts.ipynb
-  src/prompt_injection_nn/                         package: tokenizer, model, classify API
-  filter/safety_filter_rag_injection_scan.py       Open WebUI request-hook filter
-  models/<run-id>/                                 (gitignored)
+  src/prompt_injection_nn/                         package: tokenizer, model, backends (cnn, tfidf, ensemble), detector, cli
+  filter/safety_filter_rag_injection_scan.py       Open WebUI request-hook filter (shadow mode by default)
+  tests/                                           tokenizer, detector contract, filter, artifact parity
+  pyproject.toml, .github/workflows/tests.yml
+  models/<run-id>/                                 (gitignored) weights, thresholds.json, metrics.json, gate.json, per-row probabilities
 ```
 
 ## 7. Phase Roadmap
@@ -158,6 +160,6 @@ prompt-injection-nn/
 |---|---|---|
 | 1 | Verified source table (2.1 + 2.2 resolved), datagen notebook, fingerprinted v1 splits, locked adversarial set | Manifest written, no cross-split leakage, reason distribution reported per split |
 | 2 | TF-IDF logistic regression and XGBoost baselines | Calibrated, thresholded, locked test and adversarial numbers recorded |
-| 3 | CNN+BiGRU two-head model | Beats Phase 2 on injection recall at acceptable document-FPR; eval written in the LoRA's format |
+| 3 | CNN+BiGRU two-head model | Beats Phase 2 on injection recall at acceptable document-FPR; eval written in the LoRA's format. **Gate made explicit (2026-10-10):** judged on test document + agentic rows at FPR budgets 1%, 0.5%, 0.1%, plus adversarial recall; the notebook writes the verdict to `gate.json` and names the recommended backend. The mean ensemble of TF-IDF and CNN is a named candidate |
 | 4 | Generated hard examples for the six empty reasons and benign lookalikes; controlled retrain | Promote only if the locked gates improve; otherwise keep the real-data model |
-| 5 | `src/` package and the Open WebUI request-hook filter; latency measured on CPU | Filter verified against a named Open WebUI version; batch-of-ten latency recorded |
+| 5 | `src/` package and the Open WebUI request-hook filter; latency measured on CPU | Filter verified against a named Open WebUI version; batch-of-ten latency recorded. **Built 2026-10-10**: package with three backends and budget thresholds, filter with shadow mode, unit and filter tests, CI. Open: live integration test with a planted document, shadow-mode week, operator FPR budget |
