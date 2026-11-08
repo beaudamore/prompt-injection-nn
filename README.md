@@ -9,9 +9,10 @@ pipeline discipline (Hugging Face sources only, fingerprinted dataset builds, le
 baselines before the neural model, locked holdouts), same multi-device notebooks.
 
 Replaces the per-call LLM round trip of the existing
-[prompt-injection LoRA](https://github.com/beaudamore/safety) where latency matters. The LoRA
-stays the detector for typed chat prompts; this model covers the retrieval path, where a single
-turn can carry ten or more chunks.
+[prompt-injection LoRA](https://github.com/beaudamore/safety) where latency matters. Until
+2026-11-05 the LoRA stayed the detector for typed chat prompts and this repo covered only the
+retrieval path, where a single turn can carry ten or more chunks. Since 2026-11-05 the repo also
+ships a filter for typed prompts that uses the same guard (see the update below).
 
 **Status (2026-10-10):** four data builds; Phases 2 to 4 run on each; every run reported under `reports/`.
 **On v4 the neural model clears the promotion gate on the product's input.** Judged on document and
@@ -22,6 +23,30 @@ package, the Open WebUI request-hook filter (shadow mode by default), unit and f
 exist. Not yet done: a shadow-mode pilot on live traffic, the operator's false-positive budget, the
 LoRA head-to-head, and human label review. New to the project? Read `docs/LEARNING.md` first; the
 numbers are in `docs/MODEL_CARD.md`; design in `docs/PLAN.md`; how to run in `docs/PROCESS.md`.
+
+**Update (2026-11-05): two filters, one guard service.** `filter/` now holds two Open WebUI filters
+that both send text to the prompt-injection guard (`Horizon-Labs/prompt-injection-guard-base`) over
+`POST /classify`. The guard service is vLLM on the DGX Spark (port 8009) or the MLX server on the Mac
+at `http://host.docker.internal:8194` (`serve/mlx/server.py`, see `serve/README.md`); the only filter setting
+that differs is `guard_url`. The vLLM stack is not in this repo; it lives on the DGX Spark as
+`compose/live/vllm-prompt-injection-guard.yml`.
+
+- `filter/safety_filter_rag_injection_scan.py` ("RAG Injection Scan") was renamed
+  `filter/safety_filter_prompt_injection_retrieved_content.py`, titled "Prompt Injection Protection
+  (Retrieved Content)", version 0.4.0. Behaviour was unchanged by the rename; 0.4.1 the same day reworded the notice that replaces a flagged tool result (see `filter/README.md`).
+- 0.5.0 (2026-11-05): the same filter also scans the files attached to a chat when a message is sent (a new `inlet` hook next to the `request` hook): the whole stored text of each file, and in enforce mode a flagged file blocks the turn and is named to the user. Deleting the flagged file is a valve, off by default. A file is scored only when the sending user is an admin, owns it or has read access by Open WebUI's own rules; deleting needs write access. The upload scan has not been run live (checked by reading the `v0.13.0` source only), and the copy installed in Open WebUI is still 0.4.1 until the owner has it updated.
+- Both filters (2026-11-05): text is normalized with Unicode NFKC and split into pieces of at most 2,000 characters (6,000 before), because one input over the guard's 8,192-token limit makes it refuse the whole request and the filters fail open. Measured and remaining limits: `filter/README.md`, "Chunk size".
+- New: `filter/safety_filter_prompt_injection_chat.py`, "Prompt Injection Protection (Chat)", version
+  3.0.0. It is the inlet filter for typed prompts from `openwebui-safety-filters` with its LLM/LoRA
+  detector replaced by the guard; blocking, violation logging, lockout and the lockout webhook are kept.
+
+Live (2026-11-05): the retrieval filter ran in Open WebUI 0.13.0 in shadow mode against the MLX
+server and flagged the planted test document (`filter/test_files/`). On that model the file reached the
+model as a native tool result (built-in `view_file`), not as `<source>` chunks, so it was scored whole.
+
+Not done: the guard has **not been measured on typed (chat-shaped) prompts**; the retrieval filter has
+not been run live in enforce mode and its scan of attached files at send (0.5.0) has not been run live at all; the chat filter is not installed anywhere yet (it was checked by
+reading the `v0.13.0` source only) and ships in shadow mode. Details: `filter/README.md`.
 
 ---
 
@@ -281,8 +306,9 @@ Phase 4 on the LoRA held-out sets (chat-shaped): accuracy 0.889, FP 13.3%, FN 9.
 
 ## What it produces
 
-**Deploying the filter needs no training.** Download the model bundle from this repo's Releases page,
-extract it into your Open WebUI data directory, add the filter. Step by step in `filter/README.md`.
+**Deploying the filters needs no training and no model files in the Open WebUI container.** Run the
+guard service, add the filter file(s) under Admin, Functions, set `guard_url`. Step by step in
+`filter/README.md`.
 
 **Which model the filter runs (2026-10-10).** Shadow mode on a live instance produced false positives on
 web-page boilerplate and API JSON dumps that the in-house models had never seen. A survey of published
@@ -293,11 +319,22 @@ is now a backend of the package (`hf_guard`, CPU, and `hf_guard_http`, served on
 `vllm-prompt-injection-guard` stack) and is judged on our locked v4 rows by the same gate before it
 ships; the in-house CNN supplies the reason label. Speed on the GPU is tens of milliseconds per batch.
 
+**The guard on a Mac (2026-11-05).** `serve/mlx/server.py` serves the same model with MLX on Apple
+Silicon, answering the same `POST /classify` under the same served name. On a Mac Studio M1 Ultra
+(48 GPU cores, 128 GB) its scores match Hugging Face transformers in float32 to within 1.71e-07 (CPU)
+and 2.33e-07 (MPS) in P(INJECTION) over 15 check texts, with identical token counts. Ten chunks of
+1,200 characters in one request: p50 74.3 ms over HTTP, against 83.6 ms for torch on MPS and 336.2 ms
+for torch on CPU in process. Setup, the three corrections it makes to a plain `mlx-embeddings` load,
+all measurements and known limits: `serve/README.md`.
+
 | Artifact | Purpose |
 |---|---|
 | `src/prompt_injection_nn` | `load_detector()`, `classify(text)`, `classify_batch(texts)` returning a `Verdict` (label, calibrated probability, reason from the nine-reason taxonomy, the operating threshold). Three backends: `cnn_bigru`, `tfidf_logreg`, `ensemble_mean`; the default is the Phase 3 gate's recommendation. Budgets `retrieval_fpr_0.01` (default), `_0.005`, `_0.001` are thresholds chosen on validation document and agentic rows. Long inputs are scored in overlapping windows. CLI: `prompt-injection-nn "text"`. See `src/README.md`. |
-| `filter/safety_filter_rag_injection_scan.py` | Open WebUI `request`-hook filter: finds every `<source>` block retrieval appended, classifies the bodies in one batch, and in enforce mode removes flagged blocks from the context and from `metadata["sources"]` so they neither reach the model nor appear as citations. Shadow (log-only) mode by default. Fails open. Creates its own folder under the Open WebUI data directory; `scripts/publish_to_openwebui.py` fills it, so deployment is one command and no stack change. Verified against 0.11.4. See `filter/README.md`. |
-| `tests/` | Tokenizer, detector contract, filter behaviour (stub detector), and artifact parity against the notebooks' `metrics.json`. `pytest` runs anywhere; parity needs the model folders. CI in `.github/workflows/tests.yml`. |
+| `filter/safety_filter_prompt_injection_retrieved_content.py` | "Prompt Injection Protection (Retrieved Content)", 0.5.0 (renamed 2026-11-05 from `safety_filter_rag_injection_scan.py`; 0.4.1 rewords the notice that replaces a flagged tool result; 0.5.0, 2026-11-05, adds the `inlet` hook). One Open WebUI filter with two hooks. `request` hook: finds every `<source>` block retrieval appended and every native tool result, sends the text to the guard service in batches of up to 64 pieces, and in enforce mode removes flagged blocks from the context and from `metadata["sources"]` so they neither reach the model nor appear as citations. `inlet` hook (0.5.0): when a message is sent, scores the whole stored text of every file attached to the chat that the sending user may read; in enforce mode a flagged file blocks the turn and is named to the user, and `delete_flagged_files` (off by default) also deletes it; no violation count, lockout or webhook. Shadow (log-only) mode by default, one `log_only` valve for both hooks. Fails open. Self-contained: one file, no package and no model files in the container. `request` hook: verified live against Open WebUI 0.11.4; run live in 0.13.0 in shadow mode on 2026-11-05 (tool-result path); enforce mode not run live. `inlet` hook: checked against the `v0.13.0` source by reading it; not run live. The copy installed in Open WebUI is still 0.4.1 until the owner has it updated. See `filter/README.md`. |
+| `filter/safety_filter_prompt_injection_chat.py` | "Prompt Injection Protection (Chat)", 3.0.0 (new 2026-11-05). Open WebUI `inlet`-hook filter for the prompt the user typed: scores it with the same guard service; in enforce mode blocks the turn, logs the violation to a knowledge base, counts it, locks the account at the limit (admins exempt) and can post a lockout webhook. Shadow (log-only) mode by default because the guard has not been measured on typed prompts. Fails open. Checked against the Open WebUI `v0.13.0` source by reading it; not run in a live instance. See `filter/README.md`. |
+| `serve/mlx/server.py`, `serve/check_guard_server.py` | The guard service on Apple Silicon (new 2026-11-05): `Horizon-Labs/prompt-injection-guard-base` on `mlx-embeddings`, `POST /classify` in vLLM's format, port 8194, no torch. The checker tests any `/classify` server for contract, batch invariance, parity (against transformers or another server) and latency. See `serve/README.md`. |
+| `filter/test_files/` | `planted_injection_vendor_guide.md`, a fictional vendor guide with one planted instruction, for live tests of the retrieval filter. See `filter/README.md`, Test file. |
+| `tests/` | Tokenizer, detector contract, behaviour of both filters (`test_filter.py`, `test_filter_uploads.py`, `test_filter_chat.py`; stub scorer and stub `/classify` server), and artifact parity against the notebooks' `metrics.json`. `pytest` runs anywhere; parity needs the model folders. CI in `.github/workflows/tests.yml`. |
 | `models/<run-id>/` | Versioned weights, vocab, thresholds per budget, metrics, per-row probabilities, `gate.json`, and a run manifest tied to the dataset fingerprint. Gitignored; rebuilt by running the notebooks. |
 
 ## Output contract
@@ -332,7 +369,9 @@ prompt-injection-nn/
 │   └── eval/          Phase 4: evaluation against the LoRA's held-out sets
 ├── reports/           One folder per executed run: report.md and plots (tracked; data and models are not)
 ├── src/               Installable inference package (prompt_injection_nn)
-├── filter/            Open WebUI request-hook filter, shadow mode by default
+├── filter/            Two Open WebUI filters (retrieved content: request and inlet hooks; chat: inlet hook), shadow mode by default
+│   └── test_files/    Planted-injection test document for live runs
+├── serve/             The guard service: mlx/ (MLX server for Apple Silicon), check_guard_server.py, README.md
 ├── tests/             Unit, filter and parity tests; .github/workflows/tests.yml runs them
 ├── scripts/           package_release.py (model bundle for Releases), publish_to_openwebui.py (deploy), benchmark_latency.py, export_html.sh
 ├── data/              (gitignored) raw pulls and clean splits
@@ -341,6 +380,6 @@ prompt-injection-nn/
 
 ## Related
 
-- [openwebui-safety-filters](https://github.com/beaudamore/openwebui-safety-filters) — the live filters, including the inlet prompt-injection filter this complements
+- [openwebui-safety-filters](https://github.com/beaudamore/openwebui-safety-filters) — the live filters, including the inlet prompt-injection filter (v2) that `filter/safety_filter_prompt_injection_chat.py` was ported from
 - [safety](https://github.com/beaudamore/safety) — the prompt-injection and content-safety LoRAs; the dataset recipe and eval sets here are taken from its notebooks
 - [email-classifier-nn](https://github.com/beaudamore/email-classifier-nn) — the pipeline this repo mirrors

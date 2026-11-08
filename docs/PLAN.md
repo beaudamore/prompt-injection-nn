@@ -123,17 +123,17 @@ Verified against the Open WebUI source at 0.11.4 (`backend/open_webui/utils/midd
 
 **Where retrieval meets the pipeline.** Inside `process_chat_payload`, `inlet` filters run first and see only the user message and file references. Retrieval runs after that, for attached files, knowledge bases, and web-search results alike, and every hit lands in one `sources` list. Each chunk is rendered as `<source id="n" name="...">chunk</source>`, wrapped in the RAG template, and appended to the system message (or prepended to the user message). The same list is stored on `metadata["sources"]` for citations. Then the `request` filter hook runs, with the fully assembled body and `__metadata__`. That hook exists from 0.11.2.
 
-**The filter is a `request` hook.** It:
+**The retrieval filter's main hook is `request`.** (Since 0.5.0, 2026-11-05, the same filter also has an `inlet` hook that scores the whole stored text of the files attached to a chat when a message is sent, and in enforce mode blocks the turn on a flagged file; see `filter/README.md`.) The `request` hook:
 
 1. Finds every `<source ...>...</source>` block in the system and user messages.
-2. Classifies the bodies in one batch.
+2. Classifies the bodies through the guard service, in batches of up to 64 pieces.
 3. Removes flagged blocks from the message text and the matching entries from `metadata["sources"]`, so they neither reach the model nor appear as citations.
-4. Emits a status event naming the dropped source, and records the event the way the existing block-aware filters do.
+4. Emits a status event naming the dropped source. It records nothing in the shared block record; only the `inlet` hook records blocks.
 5. Continues the turn. Dropping a chunk is the action; the turn is not blocked. In **shadow mode** (the default valve) the chunk is left in place and the status line says what would have been dropped.
 
 Covered by this hook because they all flow through the same sources list: knowledge-base retrieval, uploaded files (chunked or full-context), web search, and files that were OCR'd or transcribed at upload. Tool results need two paths, verified in 0.11.4: with non-native function calling the result is appended as a source with its text and is a `<source>` block like any other; with native function calling the result lives in a `tool`-role message and its `<source>` tag is rendered with an empty body, so the filter scans each `tool`-role message as one chunk when the `request` hook re-runs inside the tool-call loop, and in enforce mode replaces a flagged result with a short notice (the message itself must stay so the tool call is answered).
 
-**Not covered.** Text typed directly into the prompt never passes through retrieval; the existing inlet filter stays in place for that. Images sent to a vision model are passed as image parts, not text; visual prompt injection is a separate problem for a separate detector. Ingest time (knowledge upload) has no filter hook; scanning at upload would need an Open WebUI patch or an external pre-upload scanner, both out of scope for now.
+**Not covered.** Text typed directly into the prompt never passes through retrieval; an inlet filter covers that. Since 2026-11-05 it is `filter/safety_filter_prompt_injection_chat.py` in this repo: the existing inlet filter with its LLM detector replaced by the same guard service, shadow mode by default (the guard has not been measured on typed prompts). Images sent to a vision model are passed as image parts, not text; visual prompt injection is a separate problem for a separate detector. Ingest time (knowledge upload) has no filter hook; scanning at upload would need an Open WebUI patch or an external pre-upload scanner, both out of scope for now.
 
 **Latency budget.** Top-k is typically 3 to 10 chunks, more with a reranker. The hook is on the critical path of every turn. A batch of ten 512-token chunks on CPU must stay well under 100 ms.
 
@@ -148,7 +148,10 @@ prompt-injection-nn/
   notebooks/training/phase_3_text_cnn_bigru.ipynb
   notebooks/eval/phase_4_eval_against_lora_holdouts.ipynb
   src/prompt_injection_nn/                         package: tokenizer, model, backends (cnn, tfidf, ensemble), detector, cli
-  filter/safety_filter_rag_injection_scan.py       Open WebUI request-hook filter (shadow mode by default)
+  filter/safety_filter_prompt_injection_retrieved_content.py   Open WebUI filter: request hook for retrieved chunks and tool results, inlet hook for attached files (shadow mode by default)
+  filter/safety_filter_prompt_injection_chat.py                Open WebUI inlet-hook filter for typed prompts (shadow mode by default)
+  filter/test_files/                               planted-injection test document for live runs
+  serve/                                           the guard service: MLX server (mlx/), check_guard_server.py; see serve/README.md
   tests/                                           tokenizer, detector contract, filter, artifact parity
   pyproject.toml, .github/workflows/tests.yml
   models/<run-id>/                                 (gitignored) weights, thresholds.json, metrics.json, gate.json, per-row probabilities

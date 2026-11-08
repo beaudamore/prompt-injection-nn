@@ -1,0 +1,6 @@
+# The MLX guard server (serve/mlx/server.py). Apple Silicon only. Versions are the ones verified on 2026-11-05
+# (Python 3.11.14, macOS 26); mlx-embeddings pulls mlx-vlm, transformers, tokenizers and huggingface_hub. No torch.
+mlx-embeddings==0.1.0
+mlx==0.32.4
+fastapi==0.162.0
+uvicorn==0.54.0
